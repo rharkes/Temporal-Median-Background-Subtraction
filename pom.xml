@@ -14,7 +14,7 @@
 
     <groupId>nl.nkiavl.rharkes</groupId>
     <artifactId>TemporalMedian</artifactId>
-    <version>3.2.1</version>
+    <version>4.0.0-ALPHA</version>
 
     <name>Temporal Median Background Subtraction</name>
     <description>This plugin provides a temporal median background subtraction. It was developed for pre-processing of large SMLM datasets.</description>
@@ -48,6 +48,7 @@
         <contributor>
             <name>Rolf Harkes</name>
         </contributor>
+        
     </contributors>
 
     <mailingLists>

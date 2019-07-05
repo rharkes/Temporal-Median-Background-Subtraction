@@ -24,77 +24,26 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
  */
-import static java.lang.System.arraycopy;
-
 import java.util.concurrent.atomic.AtomicInteger;
 
-import net.imagej.Dataset;
-import net.imagej.ImgPlus;
-import net.imglib2.Cursor;
+import net.imglib2.IterableInterval;
+import net.imglib2.RandomAccess;
+import net.imglib2.RandomAccessibleInterval;
+import net.imglib2.converter.Converters;
 import net.imglib2.img.Img;
-import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.UnsignedShortType;
 
-import org.scijava.app.StatusService;
-import org.scijava.command.Command;
-import org.scijava.log.LogService;
-import org.scijava.plugin.Parameter;
-import org.scijava.plugin.Plugin;
-import org.scijava.ui.UIService;
-
-/**
- * Subtracts the temporal median
- * @param <T>
- */
-@Plugin(type = Command.class, headless = true,
-menuPath = "Plugins>Process>Temporal Median Background Subtraction")
-public class TemporalMedian implements Command{
-
-	@Parameter
-	private LogService log;
-
-	@Parameter
-	private StatusService statusService;
+public class TemporalMedian {
 	
-	@Parameter
-	private UIService uiService;
-	
-	@Parameter
-	private Dataset currentData;
-
-	@Parameter(label = "Median window", description = "the frames for medan")
-	private short window;
-
-	@Parameter(label = "Added offset", description = "offset added to the new image")
-	private short offset;
-
-	public static void main(final String... args) throws Exception {
-
-	}
-
-	@Override
-	public void run() {
-		RealType<?> tempPixel = currentData.firstElement();
-		if (tempPixel.getBitsPerPixel()!=16) {
-			log.error("bits per pixel not equal to 16");
-			return;
-		}
-		int values = 1 << tempPixel.getBitsPerPixel(); //65536
-		@SuppressWarnings("unchecked")
-		ImgPlus<UnsignedShortType> img = (ImgPlus<UnsignedShortType>) currentData.getImgPlus();		
-		final long[] dims = new long[img.numDimensions()];
-		img.dimensions(dims);
-		//sanity check on the input
-		if (window >= dims[2]) {
-			window = (short) dims[2];
-			if (window % 2 == 0) {window--;}
-			log.warn("Window is larger than largest dimension. Reducing window to " + window);
-		} else if (window % 2 == 0) {
-			window++;
-			log.warn("No support for even windows. Window = " + window);
-		}
-		
-		short[] unrankArray = denseRank(img,values);
+	public static void run(Img<UnsignedShortType> img, short window, short offset ) {
+		final int windowC = (window - 1) / 2;
+		final int imgw = (int) img.dimension(0);
+        final int imgh = (int) img.dimension(1);
+        final int pixels = imgw * imgh;
+        
+		final RankMap rankmap = RankMap.build(img);
+        final RandomAccessibleInterval<UnsignedShortType> ranked = Converters.convert((RandomAccessibleInterval) img, rankmap::toRanked, new UnsignedShortType());
+        
 		
 		final AtomicInteger ai = new AtomicInteger(0); //special unique int for each thread
 		final Thread[] threads = newThreadArray(); //all threads
@@ -104,26 +53,49 @@ public class TemporalMedian implements Command{
 					setPriority(Thread.NORM_PRIORITY);
 				}
 				public void run() {
-					SubtractMedian subMed = new SubtractMedian(img.randomAccess(),unrankArray,window,offset,dims);
-					for (int y = ai.getAndIncrement(); y < dims[1]; y = ai.getAndIncrement()) { //get unique column
-						subMed.setPosition(y, 1);
-						for (long x = 0; x<dims[0];x++) {
-							subMed.setPosition(x, 0);
-							subMed.run();
-						}
-						statusService.showStatus("Row ("+y+"/" +dims[1]+")");
-						statusService.showProgress(y, (int)dims[1]);
-					}
+					RandomAccess<UnsignedShortType> front = ranked.randomAccess();
+                    RandomAccess<UnsignedShortType> back = img.randomAccess();
+                    MedianHistogram median = new MedianHistogram(window, rankmap.getMaxRank());
+                    for (int j = ai.getAndIncrement(); j < pixels; j = ai.getAndIncrement()) { //get unique i
+                        final int[] pos = { j % imgw, j / imgw, 0 };
+                        front.setPosition(pos);
+                        back.setPosition(pos);
+
+                        // read the first window ranked pixels into median filter
+                        for (int i = 0; i < window; ++i) {
+                            median.add((short) front.get().get());
+                            front.fwd(2);
+                        }
+                        // write current median for windowC+1 pixels
+                        for (int i = 0; i <= windowC; ++i) {
+                            final UnsignedShortType t = back.get();
+                            t.set(t.get() + offset - rankmap.fromRanked(median.get()));
+                            back.fwd(2);
+                        }
+
+                        final int zSize = (int)img.dimension(2);
+                        final int zSteps = zSize - window;
+                        for (int i = 0; i < zSteps; ++i) {
+                            median.add((short) front.get().get());
+                            front.fwd(2);
+                            final UnsignedShortType t = back.get();
+                            t.set(t.get() + offset - rankmap.fromRanked(median.get()));
+                            back.fwd(2);
+                        }
+
+                        // write current median for windowC pixels
+                        for (int i = 0; i < windowC; ++i) {
+                            final UnsignedShortType t = back.get();
+                            t.set(t.get() + offset - rankmap.fromRanked(median.get()));
+                            back.fwd(2);
+                        }
+                    }
 				}
 			}; //end of thread creation
 		}
 		startAndJoin(threads);
-		//check for zeros to warn for underflow
-		statusService.showStatus(1, 1, "FINISHED");
-		//refresh ImageJ UI to show new image
-		uiService.showUI();
 	}
-	private Thread[] newThreadArray() {
+	private static Thread[] newThreadArray() {
 		int n_cpus = Runtime.getRuntime().availableProcessors();
 		return new Thread[n_cpus];
 	}
@@ -140,52 +112,56 @@ public class TemporalMedian implements Command{
 			throw new RuntimeException(ie);
 		}
 	}
-	/**
-	 * Dense ranking of the input image. 
-	 * It returns a decompression array to go from rank to value that has the 
-	 * length of the total number of unique values.
-	 * Example: [0 5 6 5 10 6] becomes [0 1 2 1 3 2]
-	 *          The unranking array is [0 5 6 10] 
-	 * @param img input image
-	 * @param values maximum possible values
-	 * @return integer array to convert the ranked image back
-	 * @see <a href = "https://en.wikipedia.org/wiki/Ranking#Dense_ranking_(%221223%22_ranking)">Dense ranking</a>
-	 * */ 
-	public short[] denseRank(Img< UnsignedShortType > img,int values) {
-		boolean[] doesValueExist = new boolean[values];
-		Cursor<UnsignedShortType> cursor = img.cursor();
-		//go over all pixels to see what values exist
-		if (statusService != null) {statusService.showStatus("ranking image (1/3)...");}
-		while (cursor.hasNext()) {
-			doesValueExist[cursor.next().getShort()]=true;
-		}
-		//create the unrank array and subtract array. 
-		short subtract[] = new short[values];
-		short unrankArrayFull[] = new short[values]; //unrank array unrankArray[data] --> original data (int, since short cannot handle >2^15)
-		short idx = 0;
-		short subtractvalue = 0;
-		if (statusService != null) {statusService.showStatus("ranking image (2/3)...");}
-		for (int i = 0; i < values; i++) {
-			if (doesValueExist[i]) {
-				subtract[i] = subtractvalue;
-				unrankArrayFull[idx] = (short) (subtractvalue + idx);
-				idx++;
-			} else {
-				subtractvalue++;
-			}
-		}
-		//trim the unranking array
-		short unrankArray[] = new short[idx];
-		arraycopy(unrankArrayFull, 0, unrankArray, 0, idx);
-		//rank data
-		if (statusService != null) {statusService.showStatus("ranking image (3/3)...");}
-		cursor.reset();
-		while (cursor.hasNext()) {
-			UnsignedShortType t = cursor.next();
-			t.setShort((short) (t.getShort()-subtract[t.getShort()]));
-		}
-		if (statusService != null) {statusService.showStatus("ranking complete");}
-		return unrankArray;
-	}
 	
+	static class RankMap
+    {
+        public static final int U16_SIZE = 65536;
+
+        private final short[] inputToRanked;
+        private final short[] rankedToInput;
+        private static int maxRank;
+
+        public RankMap(final short[] inputToRanked, final short[] rankedToInput) {
+            this.inputToRanked = inputToRanked;
+            this.rankedToInput = rankedToInput;
+        }
+
+        public static RankMap build(IterableInterval<UnsignedShortType> input)
+        {
+            final boolean inihist[] = new boolean[U16_SIZE];
+            input.forEach(t -> inihist[t.get()] = true);
+
+            final int mapSize = U16_SIZE;
+            final short[] inputToRanked = new short[ mapSize ];
+            final short[] rankedToInput = new short[ mapSize ];
+            int r = 0;
+            for ( int i = 0; i < inihist.length; ++i ) {
+                if ( inihist[ i ] )
+                {
+                    rankedToInput[r] = (short) i;
+                    inputToRanked[i] = (short) r;
+                    ++r;
+                }
+            }
+            maxRank = r - 1;
+
+            return new RankMap(inputToRanked, rankedToInput);
+        }
+
+        public void toRanked(final UnsignedShortType in, final UnsignedShortType out) {
+            out.set(inputToRanked[in.get()]);
+        }
+
+        public void fromRanked(final UnsignedShortType in, final UnsignedShortType out) {
+            out.set(rankedToInput[in.get()]);
+        }
+
+        public short fromRanked(final short in) {
+            return rankedToInput[in];
+        }
+
+        public int getMaxRank() {
+            return maxRank;
+        }
+    }	
 }
