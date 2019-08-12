@@ -63,6 +63,10 @@ public class TemporalMedianPlugin implements Command{
 			window++;
 			log.warn("No support for even windows. Window = " + window);
 		}
-		TemporalMedian.run(img,window,offset);
+		long start = System.currentTimeMillis();
+		TemporalMedian.main(img, window, offset);
+		long end = System.currentTimeMillis();
+		long RunTime = end-start;
+		log.info("Runtime of TemporalMedian = "+RunTime+"ms");
 	}
 }

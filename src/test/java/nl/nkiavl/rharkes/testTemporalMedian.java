@@ -14,7 +14,7 @@ public class testTemporalMedian {
 	TemporalMedian TM = new TemporalMedian(); 
 	@Test
 	public void testRankMap() {
-		Img< UnsignedShortType > img = IO.openImgs( System.getProperty("user.dir")+"\\src\\test\\java\\testfile.tif", new ArrayImgFactory<>( new UnsignedShortType() ) ).get( 0 );
+		Img< UnsignedShortType > img = IO.openImgs( System.getProperty("user.dir")+"\\src\\test\\resources\\testfile.tif", new ArrayImgFactory<>( new UnsignedShortType() ) ).get( 0 );
 		final RankMap rankmap = RankMap.build(img);
 		short in;
 		for (int i=0;i<1000;i++) {
@@ -24,12 +24,12 @@ public class testTemporalMedian {
 	}
 	@Test
 	public void testSubtractMedian() {
-		Img< UnsignedShortType > img = IO.openImgs( System.getProperty("user.dir")+"\\src\\test\\java\\testfile.tif", new ArrayImgFactory<>( new UnsignedShortType() ) ).get( 0 );
-		Img< UnsignedShortType > res = IO.openImgs( System.getProperty("user.dir")+"\\src\\test\\java\\resultfile.tif", new ArrayImgFactory<>( new UnsignedShortType() ) ).get( 0 );
-		short window = 101;
-		short offset = 100;
+		Img< UnsignedShortType > img = IO.openImgs( System.getProperty("user.dir")+"\\src\\test\\resources\\bigTestfile.tif", new ArrayImgFactory<>( new UnsignedShortType() ) ).get( 0 );
+		Img< UnsignedShortType > res = IO.openImgs( System.getProperty("user.dir")+"\\src\\test\\resources\\bigResultfile.tif", new ArrayImgFactory<>( new UnsignedShortType() ) ).get( 0 );
+		short window = 501;
+		short offset = 1000;
 		long start = System.currentTimeMillis();
-		TemporalMedian.run(img, window, offset);
+		TemporalMedian.main(img, window, offset);
 		long end = System.currentTimeMillis();
 		long RunTime = end-start;
 		System.out.println("DEBUG: subtractMedian took "+RunTime+" ms");

@@ -29,7 +29,6 @@ SOFTWARE.
  
 public class MedianHistogram {
     private final int window;
-    private final int maxVal;
 
     private final int windowC; //0 indexed sorted array has median at this position.
     private final short[] hist; //Gray-level histogram init at 0
@@ -43,7 +42,6 @@ public class MedianHistogram {
      */
     public MedianHistogram(int window, int maxVal) {
         this.window = window;
-        this.maxVal = maxVal;
 
         windowC = (window - 1) / 2; //0 indexed sorted array has median at this position.
         hist = new short[maxVal + 1]; //Gray-level histogram init at 0

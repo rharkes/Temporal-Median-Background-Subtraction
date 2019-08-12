@@ -35,14 +35,15 @@ import net.imglib2.type.numeric.integer.UnsignedShortType;
 
 public class TemporalMedian {
 	
-	public static void run(Img<UnsignedShortType> img, short window, short offset ) {
+	public static void main(Img<UnsignedShortType> img, short window, short offset ) {
 		final int windowC = (window - 1) / 2;
 		final int imgw = (int) img.dimension(0);
         final int imgh = (int) img.dimension(1);
         final int pixels = imgw * imgh;
         
 		final RankMap rankmap = RankMap.build(img);
-        final RandomAccessibleInterval<UnsignedShortType> ranked = Converters.convert((RandomAccessibleInterval) img, rankmap::toRanked, new UnsignedShortType());
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+		final RandomAccessibleInterval<UnsignedShortType> ranked = Converters.convert((RandomAccessibleInterval) img, rankmap::toRanked, new UnsignedShortType());
         
 		
 		final AtomicInteger ai = new AtomicInteger(0); //special unique int for each thread
