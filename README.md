@@ -23,3 +23,11 @@ must also be made available under the GPL along with build & install instruction
 https://www.gnu.org/licenses/gpl-3.0.en.html
 
 Based on original code by Marcelo Augusto Cordeiro: https://github.com/marcelocordeiro/MedianFilter-ImageJ/
+
+
+## FTM2
+A faster version was developed by [Martijn from the HohlbeinLab](https://github.com/DrNjitram)
+
+https://github.com/HohlbeinLab/FTM2 
+
+https://forum.image.sc/t/announcing-a-faster-temporal-median-filter-for-imagej/44279
